@@ -135,69 +135,6 @@ async function handleSocialSentiment(query) {
   return { success: true, data };
 }
 
-async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
-  // 1. Gather Data in Parallel
-  const { settings } = await chrome.storage.local.get('settings');
-  const newsKey = settings?.newsApiKey;
-  
-  // Clean query for search
-  const cleanQuery = marketTitle.replace(/[^\w\s]/g, '').trim();
-
-  // Parallel Fetch (with extra robustness)
-  // We wrap these in individual try/catches so one failure doesn't kill the whole request
-  const [polyData, newsData, redditData] = await Promise.all([
-     PolymarketConnector.findMatchingMarket(cleanQuery).catch(e => { console.warn('Poly fail', e); return null; }),
-     newsKey ? NewsConnector.searchNews(cleanQuery, newsKey).catch(e => { console.warn('News fail', e); return null; }) : Promise.resolve(null),
-     RedditConnector.searchPosts(cleanQuery).catch(e => { console.warn('Reddit fail', e); return null; })
-  ]);
-
-  // 2. Prepare context for Claude
-  const context = {
-    polymarket: polyData,
-    news: newsData,
-    reddit: redditData,
-    options: options
-  };
-  
-  // NOTE: If ORACLE_DATA is not defined, we need to handle that. 
-  // It should be imported at the top.
-  if (typeof ORACLE_DATA === 'undefined') {
-     console.error('[ORACLE] ORACLE_DATA is undefined');
-     return { success: false, error: 'Internal Error: Oracle Module not loaded' };
-  }
-
-  // 3. Ask Claude for its opinion observing this data
-  let claudeResult;
-  try {
-     claudeResult = await ORACLE_DATA.analyzeMarketV2(marketTitle, currentPrice, options, context);
-  } catch (e) {
-     console.error('[ORACLE] Claude V2 Analysis Failed:', e);
-     // Fallback to basic simulation if Claude fails
-     claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
-     claudeResult.probability = claudeResult.oracleProbability; // Normalize field name
-  }
-
-  // 4. Aggregate Final Probability
-  const sources = {
-    kalshiPrice: currentPrice,
-    polymarketPrice: polyData ? polyData.yesPrice : undefined,
-    claudeProb: claudeResult.oracleProbability || claudeResult.probability, // Handle potential inconsistent naming
-    newsSentiment: newsData ? newsData.sentiment : undefined,
-    socialSentiment: redditData ? redditData.sentiment : undefined
-  };
-  
-  // Ensure ProbabilityAggregator handles cases where sources are missing gracefully
-  const finalAnalysis = ProbabilityAggregator.aggregate(sources);
-  
-  // Merge Claude's text summary with our stats
-  finalAnalysis.summary = claudeResult.summary || "Analysis synthesized from market data.";
-  finalAnalysis.bestOption = claudeResult.bestOption || "N/A";
-  finalAnalysis.sourcesDetails = { polyData, newsData, redditData }; 
-  finalAnalysis.isAiGenerated = claudeResult.isAiGenerated !== false;
-
-  return { success: true, analysis: finalAnalysis };
-}
-
 // Handle adding a new position
 async function handleAddPosition(position) {
   const { positions } = await chrome.storage.local.get('positions');
@@ -395,19 +332,36 @@ async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
   // 2. AI Analysis (Claude or Fallback)
   let claudeResult;
   try {
-    if (typeof ORACLE_DATA !== 'undefined' && settings.anthropicApiKey) {
-       // Try V2 if available
-       if (ORACLE_DATA.analyzeMarketV2) {
-          claudeResult = await ORACLE_DATA.analyzeMarketV2(settings.anthropicApiKey, marketTitle, currentPrice, options, context);
+    // Wrapper for AI timeout (20s max to beat the 25s content script timeout)
+    // If AI fails/times out, we FALLBACK to simulation, we do NOT throw error to UI
+    const runAi = async () => {
+        if (!settings.anthropicApiKey) throw new Error("No API Key");
+        
+        const promise = ORACLE_DATA.analyzeMarketV2 
+            ? ORACLE_DATA.analyzeMarketV2(settings.anthropicApiKey, marketTitle, currentPrice, options, context)
+            : ORACLE_DATA._analyzeWithClaude(settings.anthropicApiKey, marketTitle, currentPrice, options);
+
+        return await Promise.race([
+            promise,
+            new Promise((_, r) => setTimeout(() => r(null), 20000)) // Return null on timeout
+        ]);
+    };
+
+    if (typeof ORACLE_DATA !== 'undefined') {
+       const result = await runAi().catch(e => null);
+       if (result) {
+          claudeResult = result;
        } else {
-          claudeResult = await ORACLE_DATA._analyzeWithClaude(settings.anthropicApiKey, marketTitle, currentPrice, options);
+          // If null (timeout) or error, use simulation
+          console.warn("AI Analysis timed out or failed, using simulation");
+          claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
+          claudeResult.summary = "AI Service Timeout. " + claudeResult.summary;
        }
     } else {
-       // Fallback to simulation if no key or module missing
+       // Fallback to simulation if module missing
        if (typeof ORACLE_DATA !== 'undefined') {
           claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
        } else {
-          // If ORACLE_DATA is missing entirely, manual simple return
           claudeResult = {
              oracleProbability: 0.5,
              summary: "System initializing...",

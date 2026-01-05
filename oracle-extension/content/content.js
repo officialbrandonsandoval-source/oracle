@@ -382,20 +382,19 @@
       if (side === 'YES' && yesBtn) yesBtn.click();
       if (side === 'NO' && noBtn) noBtn.click();
       
-      // Retry logic for finding inputs (up to 1s)
+      // Retry logic for finding inputs (up to 3s)
       let attempts = 0;
-      const maxAttempts = 10;
+      const maxAttempts = 30; // Increased to 3s
       
       const findAndFill = () => {
         attempts++;
         const inputs = Array.from(document.querySelectorAll('input'));
         
-        // Find Contract Input
         let amountInput = inputs.find(i => 
            (i.id && i.id.toLowerCase().includes('count')) ||
            (i.name && i.name.toLowerCase().includes('count')) ||
-           (i.placeholder && i.placeholder.includes('0')) || // Generic placeholder often used
-           (i.type === 'number') // Safe bet if only one number input
+           (i.placeholder && (i.placeholder.includes('0') || i.placeholder === 'Shares')) || 
+           (i.type === 'number') 
         );
 
         if (amountInput) {
@@ -403,20 +402,25 @@
            amountInput.focus();
            
            // React Setter Hack
-           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-           setter.call(amountInput, contracts);
+           try {
+             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+             setter.call(amountInput, contracts);
+           } catch (e) {
+             amountInput.value = contracts;
+           }
            
            amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+           amountInput.dispatchEvent(new Event('change', { bubbles: true }));
            
            // Visual confirmation
            const originalBorder = amountInput.style.border;
            amountInput.style.border = '2px solid #7C3AED';
            setTimeout(() => amountInput.style.border = originalBorder, 500);
-        }
-
-        // Keep trying if we haven't found it yet
-        if (!amountInput && attempts < maxAttempts) {
+        } else if (attempts < maxAttempts) {
+           // Keep trying
            setTimeout(findAndFill, 100);
+        } else {
+           console.warn('[ORACLE] Could not find contract input after 3s');
         }
       };
       
