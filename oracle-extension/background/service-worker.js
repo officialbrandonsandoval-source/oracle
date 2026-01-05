@@ -106,7 +106,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'GET_AGGREGATED_ANALYSIS':
-       handleAggregatedAnalysis(message.marketTitle, message.currentPrice, message.options).then(sendResponse);
+       handleAggregatedAnalysis(message.marketTitle, message.currentPrice, message.options)
+          .then(sendResponse)
+          .catch(err => sendResponse({ success: false, error: err.message }));
        return true;
 
     default:
@@ -371,30 +373,46 @@ async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
     }
   } catch (e) {
     console.error('AI Analysis failed:', e);
-    // Ultimate fallback
-    if (typeof ORACLE_DATA !== 'undefined') {
-       claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
-    } else {
-       claudeResult = { oracleProbability: 0.5, summary: "Service unavailable.", isAiGenerated: false };
+    // Ultimate fallback guarantees a result
+    try {
+      if (typeof ORACLE_DATA !== 'undefined') {
+        claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
+        if (!claudeResult) throw new Error("Simulation returned null");
+      } else {
+        throw new Error("No ORACLE_DATA");
+      }
+    } catch (err2) {
+       claudeResult = { 
+         oracleProbability: 0.5, 
+         summary: "Service unavailable. " + err2.message, 
+         isAiGenerated: false,
+         bestOption: "None"
+       };
     }
   }
 
   // 3. Aggregate
   let finalAnalysis = { probability: 0.5, sources: [] };
   
-  const sourcesInput = {
-    kalshiPrice: currentPrice,
-    polymarketPrice: context.polymarket ? context.polymarket.yesPrice : undefined,
-    claudeProb: claudeResult.oracleProbability || claudeResult.probability || 0.5,
-    newsSentiment: context.news ? context.news.sentiment : undefined,
-    socialSentiment: context.reddit ? context.reddit.sentiment : undefined
-  };
+  try {
+    const sourcesInput = {
+      kalshiPrice: currentPrice,
+      polymarketPrice: context.polymarket ? context.polymarket.yesPrice : undefined,
+      claudeProb: claudeResult.oracleProbability || claudeResult.probability || 0.5,
+      newsSentiment: context.news ? context.news.sentiment : undefined,
+      socialSentiment: context.reddit ? context.reddit.sentiment : undefined
+    };
 
-  if (typeof ProbabilityAggregator !== 'undefined') {
-     finalAnalysis = ProbabilityAggregator.aggregate(sourcesInput);
-  } else {
-     finalAnalysis.probability = sourcesInput.claudeProb;
-     finalAnalysis.sources = [{ name: "Model", prob: sourcesInput.claudeProb, weight: 1 }];
+    if (typeof ProbabilityAggregator !== 'undefined') {
+      finalAnalysis = ProbabilityAggregator.aggregate(sourcesInput);
+    } else {
+      finalAnalysis.probability = sourcesInput.claudeProb;
+      finalAnalysis.sources = [{ name: "Model", prob: sourcesInput.claudeProb, weight: 1 }];
+    }
+  } catch (e) {
+     console.error("Aggregation failed", e);
+     finalAnalysis.probability = 0.5;
+     finalAnalysis.sources = [];
   }
 
   // Fill in text details
