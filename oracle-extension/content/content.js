@@ -111,28 +111,54 @@
   function attachEventListeners() {
     if (!state.panelElement) return;
 
-    // GLOBAL DELEGATION for standard buttons (Minimize, Refresh)
-    // This is much safer than attaching listeners to specific elements
-    state.panelElement.addEventListener('click', (e) => {
-        // Handle Minimize
-        if (e.target.id === 'oracle-minimize' || e.target.closest('#oracle-minimize')) {
+    // 1. MINIMIZE BUTTON (Direct Attachment, High Priority)
+    const minBtn = state.panelElement.querySelector('#oracle-minimize');
+    if (minBtn) {
+        // Clone to wipe all previous listeners
+        const newMinBtn = minBtn.cloneNode(true);
+        minBtn.parentNode.replaceChild(newMinBtn, minBtn);
+        
+        newMinBtn.addEventListener('click', (e) => {
+            console.log('[ORACLE] Minimize Clicked');
+            e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation();
             toggleMinimize();
-            return;
-        }
+        });
+        
+        // Stop drag from starting here
+        newMinBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
 
-        // Handle Refresh
-        if (e.target.id === 'oracle-refresh' || e.target.closest('#oracle-refresh')) {
+    // 2. REFRESH BUTTON
+    const refreshBtn = state.panelElement.querySelector('#oracle-refresh');
+    if (refreshBtn) {
+        const newRefreshBtn = refreshBtn.cloneNode(true);
+        refreshBtn.parentNode.replaceChild(newRefreshBtn, refreshBtn);
+        
+        newRefreshBtn.addEventListener('click', (e) => {
+            console.log('[ORACLE] Refresh Clicked');
+            e.preventDefault();
             e.stopPropagation();
+            
+            // Animation
             const btn = e.target.closest('button');
-            btn.style.transform = 'rotate(360deg)';
-            setTimeout(() => btn.style.transform = 'none', 500);
-            state.oracleAnalysis = null; // Clear cache
+            if (btn) {
+               btn.style.transform = 'rotate(360deg)';
+               setTimeout(() => btn.style.transform = 'none', 500);
+            }
+            
+            // Logic
+            state.oracleAnalysis = null;
             detectMarket();
-            return;
-        }
+        });
+        
+        newRefreshBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
 
-        // Handle Recommendations (Buy/Sell)
+    // 3. GLOBAL DELEGATION for things inside the body (like Buy Buttons)
+    state.panelElement.addEventListener('click', (e) => {
+        // Handle Recommendations (Buy/Sell) in body
         const recBtn = e.target.closest('#oracle-rec-btn');
         if (recBtn && state.oracleAnalysis) {
              e.stopPropagation();
@@ -141,7 +167,7 @@
         }
     });
 
-    // Make draggable (Header only)
+    // 4. DRAGGABLE HEADER
     const header = state.panelElement.querySelector('.oracle-header');
     if (header) {
       makeDraggable(state.panelElement, header);
@@ -577,10 +603,18 @@
 
   // Toggle minimize
   function toggleMinimize() {
+    console.log('[ORACLE] Toggling minimize state');
     state.isMinimized = !state.isMinimized;
-    state.panelElement?.classList.toggle('minimized', state.isMinimized);
-    const btn = document.getElementById('oracle-minimize');
-    if (btn) btn.textContent = state.isMinimized ? '+' : '−';
+    
+    // Explicitly find the panel if the state ref is stale
+    const panel = state.panelElement || document.getElementById('oracle-panel');
+    if (panel) {
+       panel.classList.toggle('minimized', state.isMinimized);
+       
+       // Update button text
+       const btn = panel.querySelector('#oracle-minimize');
+       if (btn) btn.textContent = state.isMinimized ? '+' : '−';
+    }
   }
 
   // Detect market data from page
