@@ -111,42 +111,41 @@
   function attachEventListeners() {
     if (!state.panelElement) return;
 
-    // Use querySelector on our panel instead of document to be safe
-    const minBtn = state.panelElement.querySelector('#oracle-minimize');
-    if (minBtn) {
-        minBtn.onclick = (e) => {
+    // GLOBAL DELEGATION for standard buttons (Minimize, Refresh)
+    // This is much safer than attaching listeners to specific elements
+    state.panelElement.addEventListener('click', (e) => {
+        // Handle Minimize
+        if (e.target.id === 'oracle-minimize' || e.target.closest('#oracle-minimize')) {
             e.stopPropagation();
             toggleMinimize();
-        };
-    }
-    
-    const refreshBtn = state.panelElement.querySelector('#oracle-refresh');
-    if (refreshBtn) {
-        refreshBtn.onclick = (e) => {
-             e.stopPropagation();
-             const btn = e.target;
-             btn.style.transform = 'rotate(360deg)';
-             setTimeout(() => btn.style.transform = 'none', 500);
-             detectMarket();
-        };
-    }
+            return;
+        }
 
-    // Make draggable
+        // Handle Refresh
+        if (e.target.id === 'oracle-refresh' || e.target.closest('#oracle-refresh')) {
+            e.stopPropagation();
+            const btn = e.target.closest('button');
+            btn.style.transform = 'rotate(360deg)';
+            setTimeout(() => btn.style.transform = 'none', 500);
+            state.oracleAnalysis = null; // Clear cache
+            detectMarket();
+            return;
+        }
+
+        // Handle Recommendations (Buy/Sell)
+        const recBtn = e.target.closest('#oracle-rec-btn');
+        if (recBtn && state.oracleAnalysis) {
+             e.stopPropagation();
+             handleRecommendationClick();
+             return;
+        }
+    });
+
+    // Make draggable (Header only)
     const header = state.panelElement.querySelector('.oracle-header');
     if (header) {
       makeDraggable(state.panelElement, header);
       header.style.cursor = 'grab';
-    }
-    
-    // Auto-fill Listener (Global delegation)
-    if (!state.hasGlobalListener) {
-        document.addEventListener('click', (e) => {
-          const recBtn = e.target.closest('#oracle-rec-btn');
-          if (recBtn && state.oracleAnalysis) {
-            handleRecommendationClick();
-          }
-        });
-        state.hasGlobalListener = true;
     }
   }
 
@@ -158,7 +157,7 @@
 
     function dragMouseDown(e) {
       e = e || window.event;
-      // Don't drag if clicking buttons
+      // CRITICAL: Ignore clicks on buttons completely
       if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
       
       e.preventDefault();
@@ -626,6 +625,7 @@
 
     try {
       // Use the new Aggregated Analysis V2
+      console.log('[ORACLE] Sending Analysis Request...');
       const fetchPromise = chrome.runtime.sendMessage({
         type: 'GET_AGGREGATED_ANALYSIS',
         marketTitle: market.title,
@@ -634,6 +634,7 @@
       });
 
       const response = await Promise.race([fetchPromise, timeoutPromise]);
+      console.log('[ORACLE] Received Response:', response);
       
       if (response && response.success) {
         state.oracleAnalysis = response.analysis;

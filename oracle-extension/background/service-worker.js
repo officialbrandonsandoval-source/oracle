@@ -111,6 +111,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           .catch(err => sendResponse({ success: false, error: err.message }));
        return true;
 
+    case 'PING':
+       sendResponse({ success: true, status: 'ALIVE' });
+       return true;
+
     default:
       sendResponse({ error: 'Unknown message type' });
   }
