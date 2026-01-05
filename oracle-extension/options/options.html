@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ORACLE Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-container">
+    <!-- Header -->
+    <header class="options-header">
+      <div class="logo">
+        <div class="logo-icon">◉</div>
+        <span class="logo-text">ORACLE</span>
+      </div>
+      <span class="options-title">Settings</span>
+    </header>
+
+    <!-- Main Content -->
+    <main class="options-main">
+      <!-- Bankroll Section -->
+      <section class="options-section">
+        <h2 class="section-title">AI Configuration</h2>
+        <div class="form-group">
+          <label class="form-label" for="anthropicApiKey">Anthropic API Key (Claude)</label>
+          <div class="input-with-prefix">
+            <span class="prefix">🔑</span>
+            <input type="password" id="anthropicApiKey" class="form-input" placeholder="sk-ant-...">
+          </div>
+          <p class="form-help">Required for real-time AI analysis. Your key is stored locally.</p>
+        </div>
+      </section>
+
+      <!-- Bankroll Section -->
+      <section class="options-section">
+        <h2 class="section-title">Bankroll Management</h2>
+        <div class="form-group">
+          <label class="form-label" for="bankroll">Trading Bankroll</label>
+          <div class="input-with-prefix">
+            <span class="prefix">$</span>
+            <input type="number" id="bankroll" class="form-input" min="100" step="100" placeholder="5000">
+          </div>
+          <p class="form-help">Your total capital allocated for prediction market trading.</p>
+        </div>
+      </section>
+
+      <!-- Position Sizing Section -->
+      <section class="options-section">
+        <h2 class="section-title">Position Sizing</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="kellyFraction">Kelly Fraction</label>
+          <select id="kellyFraction" class="form-select">
+            <option value="0.10">10% - Very Conservative</option>
+            <option value="0.15">15% - Conservative</option>
+            <option value="0.25">25% - Recommended</option>
+            <option value="0.33">33% - Moderate</option>
+            <option value="0.50">50% - Aggressive</option>
+            <option value="1.00">100% - Full Kelly (Not Recommended)</option>
+          </select>
+          <p class="form-help">Fraction of Kelly criterion to use. Lower values reduce volatility at the cost of slower growth.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="maxPositionPercent">Maximum Position Size</label>
+          <select id="maxPositionPercent" class="form-select">
+            <option value="0.02">2% of bankroll</option>
+            <option value="0.03">3% of bankroll</option>
+            <option value="0.05">5% of bankroll</option>
+            <option value="0.10">10% of bankroll</option>
+            <option value="0.15">15% of bankroll</option>
+          </select>
+          <p class="form-help">Maximum amount to risk on any single position.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="maxOpenPositions">Maximum Open Positions</label>
+          <input type="number" id="maxOpenPositions" class="form-input" min="1" max="100" placeholder="20">
+          <p class="form-help">Maximum number of concurrent open positions for diversification.</p>
+        </div>
+      </section>
+
+      <!-- Edge Thresholds Section -->
+      <section class="options-section">
+        <h2 class="section-title">Edge Thresholds</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="minEdgeThreshold">Minimum Edge to Trade</label>
+          <select id="minEdgeThreshold" class="form-select">
+            <option value="0.02">2%</option>
+            <option value="0.03">3%</option>
+            <option value="0.05">5%</option>
+            <option value="0.08">8%</option>
+            <option value="0.10">10%</option>
+            <option value="0.15">15%</option>
+          </select>
+          <p class="form-help">Only recommend trades when edge exceeds this threshold.</p>
+        </div>
+      </section>
+
+      <!-- Risk Management Section -->
+      <section class="options-section">
+        <h2 class="section-title">Risk Management</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="maxDailyLossPercent">Maximum Daily Loss</label>
+          <select id="maxDailyLossPercent" class="form-select">
+            <option value="0.05">5% of bankroll</option>
+            <option value="0.10">10% of bankroll</option>
+            <option value="0.15">15% of bankroll</option>
+            <option value="0.20">20% of bankroll</option>
+            <option value="0.25">25% of bankroll</option>
+          </select>
+          <p class="form-help">Stop trading alerts when daily losses exceed this amount.</p>
+        </div>
+      </section>
+
+      <!-- Display Section -->
+      <section class="options-section">
+        <h2 class="section-title">Display</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="theme">Theme</label>
+          <select id="theme" class="form-select">
+            <option value="dark">Dark</option>
+            <option value="light">Light (Coming Soon)</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Data Management Section -->
+      <section class="options-section">
+        <h2 class="section-title">Data Management</h2>
+        
+        <div class="button-group">
+          <button class="btn btn-secondary" id="export-btn">
+            📤 Export Data
+          </button>
+          <button class="btn btn-secondary" id="import-btn">
+            📥 Import Data
+          </button>
+          <input type="file" id="import-file" accept=".json" style="display: none;">
+          <button class="btn btn-danger" id="clear-btn">
+            🗑 Clear All Data
+          </button>
+        </div>
+      </section>
+
+      <!-- Save Button -->
+      <div class="save-section">
+        <button class="btn btn-primary btn-large" id="save-btn">
+          Save Settings
+        </button>
+        <span class="save-status" id="save-status"></span>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="options-footer">
+      <p>ORACLE v1.0.0 | Political Prediction Edge Engine</p>
+      <p class="footer-links">
+        <a href="https://trading-api.readme.kalshi.com" target="_blank">Kalshi API Docs</a>
+        <span>•</span>
+        <a href="#" id="reset-defaults">Reset to Defaults</a>
+      </p>
+    </footer>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

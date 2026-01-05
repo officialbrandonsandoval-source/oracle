@@ -1,0 +1,266 @@
+// ORACLE Service Worker
+// Background tasks and API calls
+
+// Import libraries
+try {
+  importScripts('../lib/oracle_data.js');
+} catch (e) {
+  console.error(e);
+}
+
+// Install event
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log('[ORACLE] Extension installed:', details.reason);
+  
+  // Initialize default settings
+  if (details.reason === 'install') {
+    initializeDefaults();
+  }
+});
+
+// Initialize default settings
+async function initializeDefaults() {
+  const defaults = {
+    settings: {
+      bankroll: 5000,
+      kellyFraction: 0.25,
+      minEdgeThreshold: 0.05,
+      maxPositionPercent: 0.05,
+      maxDailyLossPercent: 0.15,
+      maxOpenPositions: 20,
+      theme: 'dark'
+    },
+    positions: [],
+    trades: [],
+    performance: {
+      totalTrades: 0,
+      winRate: 0,
+      avgEdge: 0,
+      totalPL: 0,
+      roiPercent: 0,
+      maxDrawdown: 0,
+      brierScore: 0
+    }
+  };
+
+  await chrome.storage.local.set(defaults);
+  console.log('[ORACLE] Default settings initialized');
+}
+
+// Listen for messages from content script or popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[ORACLE] Message received:', message.type);
+
+  switch (message.type) {
+    case 'ADD_POSITION':
+      handleAddPosition(message.position).then(sendResponse);
+      return true;
+
+    case 'GET_ORACLE_ANALYSIS':
+      handleOracleAnalysis(message.marketTitle, message.currentPrice, message.options).then(sendResponse);
+      return true;
+
+    case 'CHAT_WITH_ORACLE':
+      handleOracleChat(message.marketTitle, message.marketContext, message.userMessage).then(sendResponse);
+      return true;
+
+    case 'CLOSE_POSITION':
+      handleClosePosition(message.positionId, message.exitPrice, message.outcome).then(sendResponse);
+      return true;
+
+    case 'GET_SETTINGS':
+      chrome.storage.local.get('settings', (data) => {
+        sendResponse(data.settings);
+      });
+      return true;
+
+    case 'SAVE_SETTINGS':
+      chrome.storage.local.set({ settings: message.settings }, () => {
+        sendResponse({ success: true });
+      });
+      return true;
+
+    case 'FETCH_MARKET_DATA':
+      fetchKalshiMarketData(message.marketId).then(sendResponse);
+      return true;
+
+    default:
+      sendResponse({ error: 'Unknown message type' });
+  }
+});
+
+// Handle adding a new position
+async function handleAddPosition(position) {
+  const { positions } = await chrome.storage.local.get('positions');
+  const currentPositions = positions || [];
+
+  const newPosition = {
+    id: crypto.randomUUID(),
+    ...position,
+    entryDate: new Date().toISOString(),
+    status: 'OPEN'
+  };
+
+  currentPositions.push(newPosition);
+  await chrome.storage.local.set({ positions: currentPositions });
+
+  return { success: true, position: newPosition };
+}
+
+// Handle closing a position
+async function handleClosePosition(positionId, exitPrice, outcome) {
+  const { positions, trades, performance, settings } = await chrome.storage.local.get([
+    'positions', 'trades', 'performance', 'settings'
+  ]);
+
+  const currentPositions = positions || [];
+  const currentTrades = trades || [];
+  const currentPerformance = performance || {};
+  const currentSettings = settings || { bankroll: 5000 };
+
+  const index = currentPositions.findIndex(p => p.id === positionId);
+  if (index === -1) {
+    return { success: false, error: 'Position not found' };
+  }
+
+  const position = currentPositions[index];
+  const payout = outcome === 'WIN' ? position.contracts : 0;
+  const realizedPL = payout - position.costBasis;
+
+  // Update position
+  currentPositions[index] = {
+    ...position,
+    status: 'CLOSED',
+    exitPrice,
+    exitDate: new Date().toISOString(),
+    outcome,
+    payout,
+    realizedPL
+  };
+
+  // Add to trades
+  currentTrades.push({
+    id: crypto.randomUUID(),
+    ...currentPositions[index],
+    action: 'CLOSE'
+  });
+
+  // Update performance
+  const closedTrades = currentTrades.filter(t => t.status === 'CLOSED');
+  const wins = closedTrades.filter(t => t.outcome === 'WIN');
+  const totalPL = closedTrades.reduce((sum, t) => sum + (t.realizedPL || 0), 0);
+
+  const updatedPerformance = {
+    ...currentPerformance,
+    totalTrades: closedTrades.length,
+    winRate: closedTrades.length > 0 ? wins.length / closedTrades.length : 0,
+    totalPL: totalPL,
+    roiPercent: currentSettings.bankroll > 0 ? (totalPL / currentSettings.bankroll) * 100 : 0
+  };
+
+  // Save all updates
+  await chrome.storage.local.set({
+    positions: currentPositions,
+    trades: currentTrades,
+    performance: updatedPerformance
+  });
+
+  return { success: true, position: currentPositions[index], performance: updatedPerformance };
+}
+
+// Fetch market data from Kalshi API (placeholder - would need API keys)
+async function fetchKalshiMarketData(marketId) {
+  // In production, this would call the Kalshi API
+  // For now, return a placeholder
+  console.log('[ORACLE] Fetching market data for:', marketId);
+  
+  return {
+    success: false,
+    error: 'API integration not yet implemented. Use manual price input.'
+  };
+}
+
+// Create alarms for periodic tasks
+chrome.alarms.create('updatePositions', { periodInMinutes: 5 });
+
+// Handle alarms
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'updatePositions') {
+    updateOpenPositions();
+  }
+});
+
+// Update open positions with current prices (placeholder)
+async function updateOpenPositions() {
+  const { positions } = await chrome.storage.local.get('positions');
+  const openPositions = (positions || []).filter(p => p.status === 'OPEN');
+
+  if (openPositions.length === 0) return;
+
+  console.log('[ORACLE] Updating', openPositions.length, 'open positions');
+  
+  // In production, fetch current prices and update unrealizedPL
+  // For now, just log
+}
+
+// Context menu for quick actions
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'oracle-analyze',
+    title: 'Analyze with ORACLE',
+    contexts: ['page'],
+    documentUrlPatterns: ['https://kalshi.com/*', 'https://*.kalshi.com/*']
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'oracle-analyze') {
+    // Send message to content script to refresh analysis
+    chrome.tabs.sendMessage(tab.id, { type: 'REFRESH_ANALYSIS' });
+  }
+});
+
+console.log('[ORACLE] Service worker loaded');
+
+// Handle Oracle Analysis request
+async function handleOracleAnalysis(marketTitle, currentPrice, options) {
+  try {
+    // Check if ORACLE_DATA is loaded
+    if (typeof ORACLE_DATA === 'undefined') {
+      console.error('ORACLE_DATA not loaded');
+      return { success: false, error: 'Oracle Data module not loaded' };
+    }
+    
+    const analysis = await ORACLE_DATA.analyzeMarket(marketTitle, currentPrice, options);
+    return { success: true, analysis };
+  } catch (error) {
+    console.error('Oracle analysis failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Handle Oracle Chat request
+async function handleOracleChat(marketTitle, marketContext, userMessage) {
+  try {
+    const data = await chrome.storage.local.get('settings');
+    const apiKey = data.settings?.anthropicApiKey;
+    
+    if (!apiKey) {
+      return { success: true, response: "Please set your Anthropic API Key in settings to enable chat." };
+    }
+
+    // Check if ORACLE_DATA is loaded
+    if (typeof ORACLE_DATA === 'undefined') {
+      return { success: false, error: 'Oracle Data module not loaded' };
+    }
+    
+    // Fallback if context is missing from message (e.g. old content script)
+    const safeContext = marketContext || "No page context available.";
+    
+    const response = await ORACLE_DATA.chatWithClaude(apiKey, marketTitle, safeContext, userMessage);
+    return { success: true, response }; // Ensure we return a structured response object
+  } catch (error) {
+    console.error('Oracle chat failed:', error);
+    return { success: false, error: error.message };
+  }
+}

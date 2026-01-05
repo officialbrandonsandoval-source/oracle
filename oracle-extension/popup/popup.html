@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ORACLE</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="logo">
+        <div class="logo-icon">◉</div>
+        <span class="logo-text">ORACLE</span>
+      </div>
+      <button class="settings-btn" id="settings-btn" title="Settings">⚙</button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="popup-main" id="main-view">
+      <!-- Bankroll Section -->
+      <section class="section">
+        <div class="section-header">
+          <span class="section-title">Bankroll</span>
+          <button class="edit-btn" id="edit-bankroll-btn">Edit</button>
+        </div>
+        <div class="bankroll-display">
+          <span class="currency">$</span>
+          <span class="bankroll-value" id="bankroll-value">5,000.00</span>
+        </div>
+      </section>
+
+      <!-- Settings Summary -->
+      <section class="section">
+        <div class="section-header">
+          <span class="section-title">Settings</span>
+        </div>
+        <div class="settings-grid">
+          <div class="setting-item">
+            <span class="setting-label">Kelly Fraction</span>
+            <select class="setting-select" id="kelly-fraction">
+              <option value="0.10">10% (Conservative)</option>
+              <option value="0.25" selected>25% (Recommended)</option>
+              <option value="0.50">50% (Aggressive)</option>
+              <option value="1.00">100% (Full Kelly)</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <span class="setting-label">Min Edge</span>
+            <select class="setting-select" id="min-edge">
+              <option value="0.03">3%</option>
+              <option value="0.05" selected>5%</option>
+              <option value="0.08">8%</option>
+              <option value="0.10">10%</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <span class="setting-label">Max Position</span>
+            <select class="setting-select" id="max-position">
+              <option value="0.02">2%</option>
+              <option value="0.05" selected>5%</option>
+              <option value="0.10">10%</option>
+              <option value="0.15">15%</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Open Positions -->
+      <section class="section">
+        <div class="section-header">
+          <span class="section-title">Open Positions</span>
+          <span class="position-count" id="position-count">0</span>
+        </div>
+        <div class="positions-list" id="positions-list">
+          <div class="empty-state">
+            <span class="empty-icon">📊</span>
+            <span>No open positions</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Performance Summary -->
+      <section class="section">
+        <div class="section-header">
+          <span class="section-title">Performance</span>
+        </div>
+        <div class="performance-grid">
+          <div class="perf-item">
+            <span class="perf-value" id="total-pl">$0.00</span>
+            <span class="perf-label">Total P&L</span>
+          </div>
+          <div class="perf-item">
+            <span class="perf-value" id="roi">0.0%</span>
+            <span class="perf-label">ROI</span>
+          </div>
+          <div class="perf-item">
+            <span class="perf-value" id="win-rate">0%</span>
+            <span class="perf-label">Win Rate</span>
+          </div>
+          <div class="perf-item">
+            <span class="perf-value" id="total-trades">0</span>
+            <span class="perf-label">Trades</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Edit Bankroll Modal -->
+    <div class="modal" id="bankroll-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="modal-title">Set Bankroll</span>
+          <button class="close-btn" id="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <span class="input-prefix">$</span>
+            <input type="number" 
+                   class="input-field" 
+                   id="bankroll-input" 
+                   placeholder="5000"
+                   min="100"
+                   step="100">
+          </div>
+          <p class="input-help">Enter your total trading bankroll for position sizing calculations.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancel-bankroll">Cancel</button>
+          <button class="btn btn-primary" id="save-bankroll">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <button class="footer-btn" id="export-btn" title="Export Data">📤</button>
+      <span class="footer-text">v1.0.0</span>
+      <button class="footer-btn" id="clear-btn" title="Clear Data">🗑</button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "ORACLE - Political Prediction Edge",
+  "version": "1.0.0",
+  "description": "Calculate edge and optimal position sizing for Kalshi political prediction markets",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://kalshi.com/*",
+    "https://*.kalshi.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "48": "assets/icon-48.png",
+      "128": "assets/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon-16.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://kalshi.com/*",
+        "https://*.kalshi.com/*"
+      ],
+      "js": [
+        "lib/storage.js",
+        "lib/kelly.js",
+        "lib/edge.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options/options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["https://kalshi.com/*", "https://*.kalshi.com/*"]
+    }
+  ]
+}
