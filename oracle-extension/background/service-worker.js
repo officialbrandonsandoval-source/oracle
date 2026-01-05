@@ -308,13 +308,13 @@ async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
      settings = data.settings || {};
   } catch(e) {}
 
-  // 1. External Data (With strict 3s timeout to fallback fast)
+  // 1. External Data (With strict 2s timeout to fallback fast)
   const fetchExternal = async () => {
      try {
        // Short timeout wrapper
        const withTimeout = (promise) => Promise.race([
           promise,
-          new Promise(r => setTimeout(() => r(null), 3500)) 
+          new Promise(r => setTimeout(() => r(null), 2000)) 
        ]);
 
        const cleanQuery = marketTitle ? marketTitle.replace(/[^\w\s]/g, '').trim() : "market";
@@ -338,7 +338,7 @@ async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
   // 2. AI Analysis (Claude or Fallback)
   let claudeResult;
   try {
-    // Wrapper for AI timeout (20s max to beat the 25s content script timeout)
+    // Wrapper for AI timeout (10s max to beat the browser service worker kill timer)
     // If AI fails/times out, we FALLBACK to simulation, we do NOT throw error to UI
     const runAi = async () => {
         if (!settings.anthropicApiKey) throw new Error("No API Key");
@@ -349,7 +349,7 @@ async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
 
         return await Promise.race([
             promise,
-            new Promise((_, r) => setTimeout(() => r(null), 20000)) // Return null on timeout
+            new Promise((_, r) => setTimeout(() => r(null), 10000)) // Return null upon 10s timeout
         ]);
     };
 

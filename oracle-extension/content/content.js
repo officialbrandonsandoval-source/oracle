@@ -618,22 +618,34 @@
 
   // Fetch Oracle analysis from background (V2)
   async function fetchOracleAnalysis(market) {
-    // Set a timeout to prevent infinite loading
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Analysis timeout')), 25000)
-    );
+    // Retry logic for connection issues
+    const makeRequest = async (retries = 3) => {
+      try {
+          const fetchPromise = chrome.runtime.sendMessage({
+            type: 'GET_AGGREGATED_ANALYSIS',
+            marketTitle: market.title,
+            currentPrice: market.yesPrice,
+            options: market.options 
+          });
+          
+          // 14s timeout (must be longer than SW timeout of 12s)
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Analysis timeout')), 14000));
+          
+          return await Promise.race([fetchPromise, timeoutPromise]);
+      } catch (e) {
+          if (retries > 0 && e.message && (e.message.includes('port closed') || e.message.includes('connection'))) {
+              console.warn(`[ORACLE] Connection failed, retrying... (${retries} left)`);
+              await new Promise(r => setTimeout(r, 1000)); // Wait 1s
+              return makeRequest(retries - 1);
+          }
+          throw e;
+      }
+    };
 
     try {
       // Use the new Aggregated Analysis V2
       console.log('[ORACLE] Sending Analysis Request...');
-      const fetchPromise = chrome.runtime.sendMessage({
-        type: 'GET_AGGREGATED_ANALYSIS',
-        marketTitle: market.title,
-        currentPrice: market.yesPrice,
-        options: market.options 
-      });
-
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
+      const response = await makeRequest();
       console.log('[ORACLE] Received Response:', response);
       
       if (response && response.success) {
