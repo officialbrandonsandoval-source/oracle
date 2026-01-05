@@ -67,11 +67,9 @@
     const rect = panel.getBoundingClientRect();
     panel.style.left = rect.left + 'px';
     panel.style.top = rect.top + 'px';
-    panel.style.right = 'auto'; // Clear right positioning
-    
     state.panelElement = panel;
     
-    // Attach event listeners
+    // Attach event listeners immediately
     attachEventListeners();
   }
 
@@ -108,6 +106,48 @@
         </div>
       </div>
     `;
+  }
+  
+  function attachEventListeners() {
+    if (!state.panelElement) return;
+
+    // Use querySelector on our panel instead of document to be safe
+    const minBtn = state.panelElement.querySelector('#oracle-minimize');
+    if (minBtn) {
+        minBtn.onclick = (e) => {
+            e.stopPropagation();
+            toggleMinimize();
+        };
+    }
+    
+    const refreshBtn = state.panelElement.querySelector('#oracle-refresh');
+    if (refreshBtn) {
+        refreshBtn.onclick = (e) => {
+             e.stopPropagation();
+             const btn = e.target;
+             btn.style.transform = 'rotate(360deg)';
+             setTimeout(() => btn.style.transform = 'none', 500);
+             detectMarket();
+        };
+    }
+
+    // Make draggable
+    const header = state.panelElement.querySelector('.oracle-header');
+    if (header) {
+      makeDraggable(state.panelElement, header);
+      header.style.cursor = 'grab';
+    }
+    
+    // Auto-fill Listener (Global delegation)
+    if (!state.hasGlobalListener) {
+        document.addEventListener('click', (e) => {
+          const recBtn = e.target.closest('#oracle-rec-btn');
+          if (recBtn && state.oracleAnalysis) {
+            handleRecommendationClick();
+          }
+        });
+        state.hasGlobalListener = true;
+    }
   }
 
   // Make element draggable
