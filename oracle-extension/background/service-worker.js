@@ -356,104 +356,102 @@ async function handleOracleAnalysis(marketTitle, currentPrice, options) {
   }
 }
 
-// Handle Aggregated Analysis V2
+// Handle Aggregated Analysis V2 (Simplified & Robust)
 async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
-  const timeoutMs = 15000; // 15s max for external data
-
-  // Helper for timed fetch
-  const timedPromise = (promise) => Promise.race([
-    promise,
-    new Promise(r => setTimeout(() => r(null), timeoutMs)) // Resolve null on timeout, don't reject
-  ]);
-
-  // 1. Gather Data in Parallel
-  const { settings } = await chrome.storage.local.get('settings');
-  const newsKey = settings?.newsApiKey;
-  const cleanQuery = marketTitle ? marketTitle.replace(/[^\w\s]/g, '').trim() : "market";
-  const safeOptions = Array.isArray(options) ? options : [];
-
-  // Initialize data containers
-  let polyData = null;
-  let newsData = null;
-  let redditData = null;
-
+  // FAST PATH: Check settings first
+  let settings = {};
   try {
-    // Parallel Fetch with individual timeout wrappers
-    [polyData, newsData, redditData] = await Promise.all([
-       (typeof PolymarketConnector !== 'undefined' && cleanQuery.length > 2) 
-          ? timedPromise(PolymarketConnector.findMatchingMarket(cleanQuery).catch(e => null))
-          : Promise.resolve(null),
-       
-       (typeof NewsConnector !== 'undefined' && newsKey) 
-          ? timedPromise(NewsConnector.searchNews(cleanQuery, newsKey).catch(e => null)) 
-          : Promise.resolve(null),
-       
-       (typeof RedditConnector !== 'undefined') 
-          ? timedPromise(RedditConnector.searchPosts(cleanQuery).catch(e => null))
-          : Promise.resolve(null)
-    ]);
-  } catch (e) {
-    console.warn('External data fetch error:', e);
-  }
+     const data = await chrome.storage.local.get('settings');
+     settings = data.settings || {};
+  } catch(e) {}
 
-  // 2. Prepare context for Claude
-  const context = {
-    polymarket: polyData,
-    news: newsData,
-    reddit: redditData,
-    options: safeOptions
+  // 1. External Data (With strict 3s timeout to fallback fast)
+  const fetchExternal = async () => {
+     try {
+       // Short timeout wrapper
+       const withTimeout = (promise) => Promise.race([
+          promise,
+          new Promise(r => setTimeout(() => r(null), 3500)) 
+       ]);
+
+       const cleanQuery = marketTitle ? marketTitle.replace(/[^\w\s]/g, '').trim() : "market";
+       
+       const [poly, news, reddit] = await Promise.all([
+          (typeof PolymarketConnector !== 'undefined') ? withTimeout(PolymarketConnector.findMatchingMarket(cleanQuery).catch(e=>null)) : null,
+          (typeof NewsConnector !== 'undefined' && settings.newsApiKey) ? withTimeout(NewsConnector.searchNews(cleanQuery, settings.newsApiKey).catch(e=>null)) : null,
+          (typeof RedditConnector !== 'undefined') ? withTimeout(RedditConnector.searchPosts(cleanQuery).catch(e=>null)) : null
+       ]);
+       
+       return { polymarket: poly, news: news, reddit: reddit };
+     } catch (e) {
+       console.error("External fetch error:", e);
+       return { polymarket: null, news: null, reddit: null };
+     }
   };
 
-  // 3. Ask Claude
+  const contextData = await fetchExternal();
+  const context = { ...contextData, options };
+
+  // 2. AI Analysis (Claude or Fallback)
   let claudeResult;
   try {
-     if (typeof ORACLE_DATA !== 'undefined' && ORACLE_DATA.analyzeMarketV2) {
-       // Also time out Claude
-       claudeResult = await Promise.race([
-          ORACLE_DATA.analyzeMarketV2(marketTitle, currentPrice, safeOptions, context),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('AI Generation Timeout')), 25000))
-       ]);
-     } else if (typeof ORACLE_DATA !== 'undefined') {
-       claudeResult = await ORACLE_DATA.analyzeMarket(marketTitle, currentPrice, safeOptions);
-     } else {
-       throw new Error('ORACLE_DATA missing');
-     }
+    if (typeof ORACLE_DATA !== 'undefined' && settings.anthropicApiKey) {
+       // Try V2 if available
+       if (ORACLE_DATA.analyzeMarketV2) {
+          claudeResult = await ORACLE_DATA.analyzeMarketV2(settings.anthropicApiKey, marketTitle, currentPrice, options, context);
+       } else {
+          claudeResult = await ORACLE_DATA._analyzeWithClaude(settings.anthropicApiKey, marketTitle, currentPrice, options);
+       }
+    } else {
+       // Fallback to simulation if no key or module missing
+       if (typeof ORACLE_DATA !== 'undefined') {
+          claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
+       } else {
+          // If ORACLE_DATA is missing entirely, manual simple return
+          claudeResult = {
+             oracleProbability: 0.5,
+             summary: "System initializing...",
+             isAiGenerated: false
+          };
+       }
+    }
   } catch (e) {
-     console.error('[ORACLE] Claude V2 Analysis Failed:', e);
-     // Fallback to simulation
-     if (typeof ORACLE_DATA !== 'undefined') {
-        claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
-        claudeResult.probability = claudeResult.oracleProbability; 
-     } else {
-        return { success: false, error: 'Critical: AI module failed' };
-     }
+    console.error('AI Analysis failed:', e);
+    // Ultimate fallback
+    if (typeof ORACLE_DATA !== 'undefined') {
+       claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
+    } else {
+       claudeResult = { oracleProbability: 0.5, summary: "Service unavailable.", isAiGenerated: false };
+    }
   }
 
-  // 4. Aggregate
-  const sources = {
+  // 3. Aggregate
+  let finalAnalysis = { probability: 0.5, sources: [] };
+  
+  const sourcesInput = {
     kalshiPrice: currentPrice,
-    polymarketPrice: polyData ? polyData.yesPrice : undefined,
-    claudeProb: claudeResult.oracleProbability || claudeResult.probability, 
-    newsSentiment: newsData ? newsData.sentiment : undefined,
-    socialSentiment: redditData ? redditData.sentiment : undefined
+    polymarketPrice: context.polymarket ? context.polymarket.yesPrice : undefined,
+    claudeProb: claudeResult.oracleProbability || claudeResult.probability || 0.5,
+    newsSentiment: context.news ? context.news.sentiment : undefined,
+    socialSentiment: context.reddit ? context.reddit.sentiment : undefined
   };
-  
-  let finalAnalysis = { probability: 0.5, confidence: 'LOW', sources: [] };
-  if (typeof ProbabilityAggregator !== 'undefined') {
-     finalAnalysis = ProbabilityAggregator.aggregate(sources);
-  } else {
-     finalAnalysis.probability = sources.claudeProb;
-     finalAnalysis.sources = [{ name: "AI (Fallback)", prob: sources.claudeProb, weight: 1 }];
-  }
-  
-  finalAnalysis.summary = claudeResult.summary || "Analysis synthesized from market data.";
-  finalAnalysis.bestOption = claudeResult.bestOption || "N/A";
-  finalAnalysis.sourcesDetails = { polyData, newsData, redditData }; 
-  finalAnalysis.isAiGenerated = claudeResult.isAiGenerated !== false;
 
-  // Track calibration
+  if (typeof ProbabilityAggregator !== 'undefined') {
+     finalAnalysis = ProbabilityAggregator.aggregate(sourcesInput);
+  } else {
+     finalAnalysis.probability = sourcesInput.claudeProb;
+     finalAnalysis.sources = [{ name: "Model", prob: sourcesInput.claudeProb, weight: 1 }];
+  }
+
+  // Fill in text details
+  finalAnalysis.summary = claudeResult.summary || "Analysis complete.";
+  finalAnalysis.bestOption = claudeResult.bestOption;
+  finalAnalysis.sourcesDetails = context;
+  finalAnalysis.isAiGenerated = claudeResult.isAiGenerated;
+
+  // 4. Track Stats (Fire and forget)
   if (typeof CalibrationTracker !== 'undefined') {
-     CalibrationTracker.recordPrediction({ title: marketTitle, yesPrice: currentPrice }, finalAnalysis.probability).catch(e => console.error(e));
+     CalibrationTracker.recordPrediction({ title: marketTitle, yesPrice: currentPrice }, finalAnalysis.probability).catch(e=>{});
   }
 
   return { success: true, analysis: finalAnalysis };
