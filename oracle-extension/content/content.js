@@ -384,42 +384,80 @@
       
       // Small delay to let UI react
       setTimeout(() => {
-        // 2. Find Input Fields
-        // Kalshi inputs often have ID or placeholder or name
-        const inputs = Array.from(document.querySelectorAll('input'));
+        // 2. Find Input Fields (Improved Selectors)
+        const inputs = Array.from(document.querySelectorAll('input, div[contenteditable="true"]'));
         
-        // Find contract quantity input
-        // Usually placeholder "0" or "Contracts" or type="number"
-        // Heuristic: Look for input near "Contracts" text
-        const amountInput = inputs.find(i => 
-           i.placeholder?.toLowerCase().includes('contracts') || 
-           i.id?.toLowerCase().includes('count') ||
-           i.name?.toLowerCase().includes('count')
+        // Strategy A: Find by known attributes
+        let amountInput = inputs.find(i => 
+           (i.name && i.name.toLowerCase().includes('count')) ||
+           (i.id && i.id.toLowerCase().includes('count')) ||
+           (i.placeholder && i.placeholder.toLowerCase().includes('contracts')) ||
+           (i.getAttribute('aria-label') && i.getAttribute('aria-label').toLowerCase().includes('quantity'))
         );
         
-        if (amountInput) {
-          // React input hack: native value setter
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-          nativeInputValueSetter.call(amountInput, contracts);
-          amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+        // Strategy B: Find by proximity to text "Contracts"
+        if (!amountInput) {
+           const labels = Array.from(document.querySelectorAll('label, div, span'));
+           const contractLabel = labels.find(l => l.innerText && l.innerText.toLowerCase() === 'contracts');
+           if (contractLabel) {
+              // Look for input sibling or child
+              amountInput = contractLabel.parentElement.querySelector('input') || 
+                            contractLabel.parentElement.parentElement.querySelector('input');
+           }
+        }
+        
+        // Fallback: Just look for the first focused numeric input or type=number
+        if (!amountInput) {
+           amountInput = document.querySelector('input[type="number"], input[inputmode="numeric"]');
         }
 
-        // Find Limit Price Input (if limit order selected)
-        const priceInput = inputs.find(i => 
-           i.placeholder?.includes('$') || 
-           i.id?.toLowerCase().includes('price') ||
-           i.value?.includes('$')
+        if (amountInput) {
+          console.log('[ORACLE] Found contract input:', amountInput);
+          amountInput.focus();
+          amountInput.value = contracts;
+          
+          // Trigger React/Framework events
+          const evInput = new Event('input', { bubbles: true });
+          const evChange = new Event('change', { bubbles: true });
+          amountInput.dispatchEvent(evInput);
+          amountInput.dispatchEvent(evChange);
+          
+          // Special hack for React 16+ input racking
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          if (nativeInputValueSetter) {
+             nativeInputValueSetter.call(amountInput, contracts);
+             amountInput.dispatchEvent(evInput);
+          }
+        } else {
+          console.warn('[ORACLE] Could not find Contract Input field');
+        }
+
+        // 3. Find Limit Price Input (Improved)
+        // Usually contains '$' or implies price
+        let priceInput = inputs.find(i => 
+           (i.id && i.id.toLowerCase().includes('price')) ||
+           (i.placeholder && i.placeholder.includes('$')) ||
+           (i.value && i.value.includes('$')) ||
+           (i.nextElementSibling && i.nextElementSibling.innerText.includes('¢'))
         );
-        
-        // Convert 0.16 to 16 if needed, depending on input format (Kalshi usually takes cents for limits)
+
         if (priceInput) {
            const priceVal = Math.floor(price * 100);
-           const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-           nativeInputValueSetter.call(priceInput, priceVal);
+           console.log('[ORACLE] Found price input, setting to:', priceVal);
+           
+           priceInput.focus();
+           priceInput.value = priceVal;
            priceInput.dispatchEvent(new Event('input', { bubbles: true }));
+           priceInput.dispatchEvent(new Event('change', { bubbles: true }));
+           
+           const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+           if (nativeInputValueSetter) {
+             nativeInputValueSetter.call(priceInput, priceVal);
+             priceInput.dispatchEvent(new Event('input', { bubbles: true }));
+           }
         }
         
-      }, 100);
+      }, 150);
 
     } catch (e) {
       console.error('[ORACLE] Autofill failed:', e);
