@@ -32,14 +32,15 @@
 }
 
 #oracle-panel.minimized {
-  width: auto;
-  min-width: 150px;
-  max-width: 320px;
-  height: 48px;
+  width: auto !important;
+  min-width: 150px !important;
+  max-width: 320px !important;
+  height: 48px !important;
+  overflow: hidden !important;
 }
 
 #oracle-panel.minimized .oracle-body {
-  display: none;
+  display: none !important;
 }
 
 /* Header */

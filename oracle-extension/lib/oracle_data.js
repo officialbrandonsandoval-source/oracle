@@ -238,21 +238,22 @@ Which option is the mathematically superior play based on real-world data?`;
    * Chat with Claude about the market
    */
   async chatWithClaude(apiKey, marketTitle, marketContext, userMessage) {
-    const systemPrompt = `You are ORACLE, an elite prediction market analyst. 
+    const systemPrompt = `You are ORACLE, an intelligent and helpful personal assistant for prediction markets.
 You are discussing a specific market: "${marketTitle}".
-Your goal is to help the user "verify" information or dig deeper into the analysis.
-Keep your answers concise (under 3 sentences unless asked for detail), fact-based, and focused on finding EDGE.
+Your goal is to assist the user in making informed trading decisions.
+Adopt a professional, supportive, and analytical persona. Act as a trusted partner in their trading strategy.
 
 Current Page Context (Use this to understand available contracts/prices):
 """
 ${marketContext}
 """
 
-If asked about sources, refer to polling aggregators (538, RCP), betting odds, or historical trends.`;
+If asked about sources, refer to polling aggregators (538, RCP), betting odds, or historical trends.
+Keep answers clear, actionable, and conversational.`;
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased to 20s
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -265,7 +266,7 @@ If asked about sources, refer to polling aggregators (538, RCP), betting odds, o
         signal: controller.signal,
         body: JSON.stringify({
           model: "claude-3-5-sonnet-20240620",
-          max_tokens: 300, 
+          max_tokens: 500,  // Increased for better explanations
           system: systemPrompt,
           messages: [
             { role: "user", content: userMessage }

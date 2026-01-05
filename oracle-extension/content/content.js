@@ -184,7 +184,8 @@
     function dragMouseDown(e) {
       e = e || window.event;
       // CRITICAL: Ignore clicks on buttons completely
-      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+      const target = e.target.nodeType === 3 ? e.target.parentNode : e.target;
+      if (target.closest('.oracle-controls') || target.closest('button')) return;
       
       e.preventDefault();
       // Get the mouse cursor position at startup:
@@ -392,31 +393,7 @@
     return '⏸';
   }
 
-  // Attach event listeners
-  function attachEventListeners() {
-    // Minimize button
-    document.getElementById('oracle-minimize')?.addEventListener('click', toggleMinimize);
-    
-    // Refresh button
-    document.getElementById('oracle-refresh')?.addEventListener('click', () => {
-      detectMarket();
-    });
 
-    // Make draggable
-    const header = state.panelElement?.querySelector('.oracle-header');
-    if (header && state.panelElement) {
-      makeDraggable(state.panelElement, header);
-      header.style.cursor = 'grab';
-    }
-    
-    // Recommendation Button (Click to Autofill)
-    document.addEventListener('click', (e) => {
-      const recBtn = e.target.closest('#oracle-rec-btn');
-      if (recBtn && state.oracleAnalysis) {
-        handleRecommendationClick();
-      }
-    });
-  }
   
   // Fill order form
   function handleRecommendationClick() {
@@ -604,16 +581,22 @@
   // Toggle minimize
   function toggleMinimize() {
     console.log('[ORACLE] Toggling minimize state');
-    state.isMinimized = !state.isMinimized;
+    const panel = document.getElementById('oracle-panel');
+    if (!panel) return;
     
-    // Explicitly find the panel if the state ref is stale
-    const panel = state.panelElement || document.getElementById('oracle-panel');
-    if (panel) {
-       panel.classList.toggle('minimized', state.isMinimized);
-       
-       // Update button text
-       const btn = panel.querySelector('#oracle-minimize');
-       if (btn) btn.textContent = state.isMinimized ? '+' : '−';
+    // Check current class state (source of truth)
+    const isCurrentlyMinimized = panel.classList.contains('minimized');
+    
+    if (isCurrentlyMinimized) {
+        panel.classList.remove('minimized');
+        state.isMinimized = false;
+        const btn = panel.querySelector('#oracle-minimize');
+        if (btn) btn.textContent = '−';
+    } else {
+        panel.classList.add('minimized');
+        state.isMinimized = true;
+        const btn = panel.querySelector('#oracle-minimize');
+        if (btn) btn.textContent = '+';
     }
   }
 
