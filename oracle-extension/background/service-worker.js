@@ -347,13 +347,14 @@ async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
     const runAi = async () => {
         if (!settings.anthropicApiKey) throw new Error("No API Key");
         
-        const promise = ORACLE_DATA.analyzeMarketV2 
-            ? ORACLE_DATA.analyzeMarketV2(settings.anthropicApiKey, marketTitle, currentPrice, options, context)
-            : ORACLE_DATA._analyzeWithClaude(settings.anthropicApiKey, marketTitle, currentPrice, options);
+        // Fix: ORACLE_DATA.analyzeMarketV2 takes (marketTitle, currentPrice, options, externalContext)
+        // Previous code passed apiKey as first arg which is wrong based on oracle_data.js definition
+        // AND it uses settings internally to get the key.
+        const promise = ORACLE_DATA.analyzeMarketV2(marketTitle, currentPrice, options, context);
 
         return await Promise.race([
             promise,
-            new Promise((_, r) => setTimeout(() => r(null), 10000)) // Return null upon 10s timeout
+            new Promise((_, r) => setTimeout(() => r(new Error("AI Timeout")), 12000))
         ]);
     };
 
