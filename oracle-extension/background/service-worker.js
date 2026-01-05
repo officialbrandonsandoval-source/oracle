@@ -69,11 +69,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'CHAT_WITH_ORACLE':
-      handleOracleChat(message.marketTitle, message.marketContext, message.userMessage).then(sendResponse);
+      handleOracleChat(message.marketTitle, message.marketContext, message.userMessage)
+        .then(sendResponse)
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;
 
     case 'CLOSE_POSITION':
-      handleClosePosition(message.positionId, message.exitPrice, message.outcome).then(sendResponse);
+      handleClosePosition(message.positionId, message.exitPrice, message.outcome)
+        .then(sendResponse)
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;
 
     case 'GET_SETTINGS':

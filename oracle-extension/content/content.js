@@ -540,13 +540,21 @@
           // Clean context to remove huge blocks of whitespace/noise
           context = context.replace(/\s+/g, ' ').trim();
 
-          // Send to background
-          const response = await chrome.runtime.sendMessage({
-            type: 'CHAT_WITH_ORACLE',
-            marketTitle: state.currentMarket.title,
-            marketContext: context,
-            userMessage: msg
+          // Send to background with Client-Side Timeout
+          // Create a promise that rejects after 15 seconds
+          const timeoutPromise = new Promise((_, reject) => {
+             setTimeout(() => reject(new Error("Request timed out")), 15000);
           });
+
+          const response = await Promise.race([
+            chrome.runtime.sendMessage({
+              type: 'CHAT_WITH_ORACLE',
+              marketTitle: state.currentMarket.title,
+              marketContext: context,
+              userMessage: msg
+            }),
+            timeoutPromise
+          ]);
           
           // Remove typing indicator
           state.chatHistory = state.chatHistory.filter(m => !m.isTyping);
@@ -554,12 +562,12 @@
           if (response && response.success) {
             state.chatHistory.push({ role: 'assistant', content: response.response });
           } else {
-             state.chatHistory.push({ role: 'assistant', content: response.error || "Error connecting to Oracle." });
+             state.chatHistory.push({ role: 'assistant', content: response?.error || "Error connecting to Oracle." });
           }
         } catch (e) {
           // Remove typing indicator
           state.chatHistory = state.chatHistory.filter(m => !m.isTyping);
-          state.chatHistory.push({ role: 'assistant', content: "Network error or timeout. Please check your connection." });
+          state.chatHistory.push({ role: 'assistant', content: "The Oracle is unreachable right now. Please try again." });
         }
         
         updateChatHistory();
