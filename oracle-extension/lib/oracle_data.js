@@ -39,6 +39,112 @@ const ORACLE_DATA = {
   },
 
   /**
+   * V2 Analysis with External Context
+   */
+  async analyzeMarketV2(marketTitle, currentPrice, options, externalContext) {
+    try {
+      const data = await chrome.storage.local.get('settings');
+      const apiKey = data.settings?.anthropicApiKey;
+
+      if (apiKey && apiKey.startsWith('sk-')) {
+        return await this._analyzeWithClaudeV2(apiKey, marketTitle, currentPrice, options, externalContext);
+      } else {
+        return await this._analyzeSimulation(marketTitle, currentPrice);
+      }
+    } catch (e) {
+      console.error(e);
+      return await this._analyzeSimulation(marketTitle, currentPrice);
+    }
+  },
+
+  async _analyzeWithClaudeV2(apiKey, marketTitle, currentPrice, options, context) {
+    const formattedOptions = options && options.length > 0 
+      ? JSON.stringify(options.map(o => `${o.name} ($${o.yesPrice.toFixed(2)})`)) 
+      : "No specific options list detected. Assume binary Yes/No.";
+
+    // Format external data for prompt
+    let externalDataStr = "REAL-TIME DATA (Use this to inform your probability):\n";
+    if (context.polymarket) {
+      externalDataStr += `- Polymarket (Competitor) Price: $${context.polymarket.yesPrice.toFixed(2)} (Title: ${context.polymarket.title})\n`;
+    }
+    if (context.news) {
+      externalDataStr += `- News Sentiment: ${context.news.sentiment > 0.3 ? "Positive" : context.news.sentiment < -0.3 ? "Negative" : "Neutral"} (Based on ${context.news.articles.length} recent articles)\n`;
+      context.news.articles.slice(0,3).forEach(a => externalDataStr += `  * Headline: ${a.title}\n`);
+    }
+    if (context.reddit) {
+      externalDataStr += `- Social Sentiment: ${context.reddit.sentiment > 0 ? "Bullish" : "Bearish"}\n`;
+      context.reddit.posts.slice(0,2).forEach(p => externalDataStr += `  * Post: ${p.title}\n`);
+    }
+
+    const systemPrompt = `You are ORACLE, an elite prediction market analyst.
+Your goal is to find the "Smartest Option" for the user to trade.
+You must analyze the market "${marketTitle}".
+
+${externalDataStr}
+
+Available Contracts/Options: ${formattedOptions}
+
+Synthesize these data points. If Polymarket is significantly different from Kalshi ($${currentPrice}), investigate why (arbitrage?).
+If News/Social sentiment contradicts the price, mention it.
+
+Output MUST be valid JSON in this exact format:
+{
+  "oracleProbability": 0.75, 
+  "bestOption": "Name of best option", 
+  "summary": "Concise synthesis of data sources. Why is this the probability?"
+}
+Do not include any explanation outside the JSON.`;
+
+    const userPrompt = `Analyze this market. Current Main Price: $${currentPrice.toFixed(2)}.`;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); 
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-20240620",
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [
+            { role: "user", content: userPrompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Claude API Error: ${response.status}`);
+      }
+      
+      clearTimeout(timeoutId);
+
+      const result = await response.json();
+      const content = result.content[0].text;
+      
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("Invalid JSON response from Claude");
+      
+      const analysis = JSON.parse(jsonMatch[0]);
+
+      // Normalize return format to match what Aggregator expects roughly (though aggregator uses this output)
+      // Actually aggregator uses .oracleProbability from this.
+      return analysis;
+
+    } catch (error) {
+      console.error('[ORACLE] Claude API failed:', error);
+      throw error; 
+    }
+  },
+
+  /**
    * Call Claude API for analysis
    */
   async _analyzeWithClaude(apiKey, marketTitle, currentPrice, options) {

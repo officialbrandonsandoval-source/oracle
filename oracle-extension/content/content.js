@@ -196,13 +196,35 @@
 
       ${state.oracleAnalysis ? `
       <div class="oracle-section">
-        <div class="oracle-section-title">Oracle Insights</div>
+        <div class="oracle-section-title">Oracle V2 Intelligence</div>
+
+        <!-- Cross Reference -->
+        ${state.oracleAnalysis.sourcesDetails?.polyData ? `
+        <div class="oracle-crossref">
+          <div class="oracle-crossref-item">
+            <span class="oracle-crossref-label">Polymarket</span>
+            <span class="oracle-crossref-value">$${state.oracleAnalysis.sourcesDetails.polyData.yesPrice.toFixed(2)}</span>
+          </div>
+          <div class="oracle-crossref-item">
+            <span class="oracle-crossref-label">Delta</span>
+            <span class="oracle-crossref-value ${state.oracleAnalysis.delta > 0 ? 'positive' : 'negative'}">
+              ${state.oracleAnalysis.delta}%
+            </span>
+          </div>
+        </div>
+        ${state.oracleAnalysis.arbitrageAlert ? '<div class="oracle-arbitrage-alert">⚡ ARBITRAGE DETECTED</div>' : ''}
+        ` : ''}
+
         <div class="oracle-insight-summary">${state.oracleAnalysis.summary}</div>
-        <div class="oracle-sources">
-          ${state.oracleAnalysis.sources.slice(0, 3).map(source => `
-            <div class="oracle-source-item">
-              <div class="oracle-source-name">${source.name}</div>
-              <div class="oracle-source-prob ${source.probability > 0.5 ? 'positive' : 'negative'}">${(source.probability * 100).toFixed(0)}%</div>
+        
+        <!-- Source Breakdown -->
+        <div class="oracle-section-title" style="margin-top:8px">Source Confidence</div>
+        <div class="oracle-sources-grid">
+          ${state.oracleAnalysis.sources.map(source => `
+            <div class="oracle-source-chip">
+              <span class="oracle-source-name">${source.name}</span>
+              <span class="oracle-source-prob">${(source.prob * 100).toFixed(0)}%</span>
+              <span class="oracle-source-weight">Weight: ${(source.weight * 100).toFixed(0)}%</span>
             </div>
           `).join('')}
         </div>
@@ -212,7 +234,7 @@
       <div class="oracle-section">
         <div class="oracle-section-title">Oracle Insights</div>
         <div class="oracle-loading-insights">
-           <span class="oracle-pulse-dot"></span> Analyzing market data...
+           <span class="oracle-pulse-dot"></span> Analyzing data sources...
         </div>
       </div>
       <div class="oracle-divider"></div>
@@ -259,6 +281,7 @@
             ${display.reason ? `<span style="font-size: 11px; margin-left: 8px; text-transform: none; opacity: 0.7;">(${display.reason})</span>` : ''}
           `}
         </button>
+        ${recommendation.action !== 'PASS' ? `<div style="text-align: center; font-size: 10px; margin-top: 4px; color: #71717A;">Click to auto-fill order form</div>` : ''}
       </div>
       
       <div class="oracle-quick-stats">
@@ -319,6 +342,87 @@
     if (header && state.panelElement) {
       makeDraggable(state.panelElement, header);
       header.style.cursor = 'grab';
+    }
+    
+    // Recommendation Button (Click to Autofill)
+    document.addEventListener('click', (e) => {
+      const recBtn = e.target.closest('#oracle-rec-btn');
+      if (recBtn && state.oracleAnalysis) {
+        handleRecommendationClick();
+      }
+    });
+  }
+  
+  // Fill order form
+  function handleRecommendationClick() {
+    try {
+      const settings = state.settings;
+      if (!settings || !state.currentMarket) return;
+      
+      // Calculate recommendation again to get exact numbers
+      const recommendation = ORACLE_EDGE.generateRecommendation(
+        state.modelProbability,
+        state.currentMarket.yesPrice,
+        state.currentMarket.noPrice,
+        settings
+      );
+      
+      if (recommendation.action === 'PASS') return;
+      
+      const side = recommendation.side; // 'YES' or 'NO'
+      const contracts = recommendation.kellyBet.contracts;
+      const price = side === 'YES' ? state.currentMarket.yesPrice : state.currentMarket.noPrice;
+      
+      console.log('[ORACLE] Autofilling:', { side, contracts, price });
+      
+      // 1. Click the correct Side button (Yes/No)
+      const yesBtn = document.querySelector('button[class*="yes"], [data-side="yes"], [class*="buy-yes"]');
+      const noBtn = document.querySelector('button[class*="no"], [data-side="no"], [class*="buy-no"]');
+      
+      if (side === 'YES' && yesBtn) yesBtn.click();
+      if (side === 'NO' && noBtn) noBtn.click();
+      
+      // Small delay to let UI react
+      setTimeout(() => {
+        // 2. Find Input Fields
+        // Kalshi inputs often have ID or placeholder or name
+        const inputs = Array.from(document.querySelectorAll('input'));
+        
+        // Find contract quantity input
+        // Usually placeholder "0" or "Contracts" or type="number"
+        // Heuristic: Look for input near "Contracts" text
+        const amountInput = inputs.find(i => 
+           i.placeholder?.toLowerCase().includes('contracts') || 
+           i.id?.toLowerCase().includes('count') ||
+           i.name?.toLowerCase().includes('count')
+        );
+        
+        if (amountInput) {
+          // React input hack: native value setter
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          nativeInputValueSetter.call(amountInput, contracts);
+          amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Find Limit Price Input (if limit order selected)
+        const priceInput = inputs.find(i => 
+           i.placeholder?.includes('$') || 
+           i.id?.toLowerCase().includes('price') ||
+           i.value?.includes('$')
+        );
+        
+        // Convert 0.16 to 16 if needed, depending on input format (Kalshi usually takes cents for limits)
+        if (priceInput) {
+           const priceVal = Math.floor(price * 100);
+           const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+           nativeInputValueSetter.call(priceInput, priceVal);
+           priceInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        
+      }, 100);
+
+    } catch (e) {
+      console.error('[ORACLE] Autofill failed:', e);
     }
   }
 
@@ -467,36 +571,37 @@
     }
   }
 
-  // Fetch Oracle analysis from background
+  // Fetch Oracle analysis from background (V2)
   async function fetchOracleAnalysis(market) {
     // Set a timeout to prevent infinite loading
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Analysis timeout')), 15000)
+      setTimeout(() => reject(new Error('Analysis timeout')), 25000)
     );
 
     try {
+      // Use the new Aggregated Analysis V2
       const fetchPromise = chrome.runtime.sendMessage({
-        type: 'GET_ORACLE_ANALYSIS',
+        type: 'GET_AGGREGATED_ANALYSIS',
         marketTitle: market.title,
         currentPrice: market.yesPrice,
-        options: market.options // Send extracted options
+        options: market.options 
       });
 
       const response = await Promise.race([fetchPromise, timeoutPromise]);
       
       if (response && response.success) {
         state.oracleAnalysis = response.analysis;
-        state.modelProbability = response.analysis.oracleProbability;
+        state.modelProbability = response.analysis.probability; // Note: V2 returns .probability not .oracleProbability
         
         // Update badge if AI
         const badge = document.getElementById('oracle-badge');
         if (badge) {
           if (state.oracleAnalysis.isAiGenerated) {
-            badge.textContent = 'AI LIVE';
-            badge.style.background = '#7C3AED'; // Purple for AI
+            badge.textContent = 'ORACLE V2';
+            badge.style.background = '#7C3AED'; 
           } else {
             badge.textContent = 'LIVE';
-            badge.style.background = '#EF4444'; // Red for Sim
+            badge.style.background = '#EF4444'; 
           }
         }
         
@@ -504,7 +609,6 @@
         const slider = document.getElementById('oracle-prob-slider');
         if (slider) {
           slider.value = state.modelProbability * 100;
-          // Trigger input event to update display
           slider.dispatchEvent(new Event('input'));
         }
       } else {
@@ -513,16 +617,17 @@
     } catch (e) {
       console.error('[ORACLE] Failed to fetch analysis:', e);
       
-      // Fallback to a minimal local analysis so the UI doesn't hang
+      // Fallback 
       state.oracleAnalysis = {
         market: market.title,
+        probability: 0.5,
         oracleProbability: 0.5,
-        summary: "Unable to reach Oracle servers. Providing estimated baseline.",
-        sources: [{ name: "System Offline", probability: 0.5 }],
+        summary: "Unable to reach Oracle V2 servers. " + e.message,
+        sources: [],
+        sourcesDetails: {},
         isAiGenerated: false
       };
       
-      // Force update UI
       updateAnalysis();
     }
   }

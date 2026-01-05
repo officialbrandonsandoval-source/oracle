@@ -32,6 +32,35 @@
         </div>
       </section>
 
+      <!-- Data Sources Section -->
+      <section class="options-section">
+        <h2 class="section-title">External Data Configuration</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="newsApiKey">NewsAPI Key</label>
+          <div class="input-with-prefix">
+            <span class="prefix">📰</span>
+            <input type="password" id="newsApiKey" class="form-input" placeholder="Get free key at newsapi.org">
+          </div>
+          <p class="form-help">Enables news sentiment analysis. <a href="https://newsapi.org/register" target="_blank" style="color: var(--oracle-purple-primary)">Get a free API key here</a>.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="kalshiKeyId">Kalshi API Key ID</label>
+          <div class="input-with-prefix">
+            <span class="prefix">🆔</span>
+            <input type="text" id="kalshiKeyId" class="form-input" placeholder="kid-...">
+          </div>
+          <p class="form-help">Generate this in your <a href="https://kalshi.com/account/details" target="_blank" style="color: var(--oracle-purple-primary)">Kalshi Account Settings</a>.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="kalshiPrivateKey">Kalshi Private Key (PEM)</label>
+          <textarea id="kalshiPrivateKey" class="form-input" style="height: 100px; font-family: monospace;" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+          <p class="form-help">Required for portfolio sync. Stored locally & encrypted.</p>
+        </div>
+      </section>
+
       <!-- Bankroll Section -->
       <section class="options-section">
         <h2 class="section-title">Bankroll Management</h2>

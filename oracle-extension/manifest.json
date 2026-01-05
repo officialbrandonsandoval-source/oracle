@@ -11,7 +11,12 @@
   "host_permissions": [
     "https://kalshi.com/*",
     "https://*.kalshi.com/*",
-    "https://api.anthropic.com/*"
+    "https://api.anthropic.com/*",
+    "https://clob.polymarket.com/*",
+    "https://gamma-api.polymarket.com/*",
+    "https://newsapi.org/*",
+    "https://www.reddit.com/*",
+    "https://api.elections.kalshi.com/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",

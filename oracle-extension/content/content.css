@@ -765,3 +765,76 @@
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1); }
 }
+/* V2 Styles */
+.oracle-crossref {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.oracle-crossref-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oracle-crossref-label {
+  font-size: 10px;
+  color: var(--oracle-medium-gray);
+  text-transform: uppercase;
+}
+
+.oracle-crossref-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #E4E4E7;
+}
+
+.oracle-crossref-value.positive { color: #10B981; }
+.oracle-crossref-value.negative { color: #EF4444; }
+
+.oracle-arbitrage-alert {
+  background: linear-gradient(135deg, #7C3AED, #5B21B6);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+  animation: oracle-pulse 2s infinite;
+}
+
+.oracle-sources-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.oracle-source-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oracle-source-name {
+  font-size: 10px;
+  color: #A1A1AA;
+}
+
+.oracle-source-prob {
+  font-size: 13px;
+  font-weight: 600;
+  color: #E4E4E7;
+}
+
+.oracle-source-weight {
+  font-size: 9px;
+  color: #7C3AED;
+}

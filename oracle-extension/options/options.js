@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', init);
 // Default settings
 const defaultSettings = {
   anthropicApiKey: '',
+  newsApiKey: '',
+  kalshiKeyId: '',
+  kalshiPrivateKey: '',
   bankroll: 5000,
   kellyFraction: 0.25,
   minEdgeThreshold: 0.05,
@@ -36,6 +39,10 @@ async function loadSettings() {
 // Populate form with current settings
 function populateForm() {
   document.getElementById('anthropicApiKey').value = currentSettings.anthropicApiKey || '';
+  document.getElementById('newsApiKey').value = currentSettings.newsApiKey || '';
+  document.getElementById('kalshiKeyId').value = currentSettings.kalshiKeyId || '';
+  document.getElementById('kalshiPrivateKey').value = currentSettings.kalshiPrivateKey || '';
+  
   document.getElementById('bankroll').value = currentSettings.bankroll;
   document.getElementById('kellyFraction').value = currentSettings.kellyFraction.toString();
   document.getElementById('minEdgeThreshold').value = currentSettings.minEdgeThreshold.toString();
@@ -86,6 +93,9 @@ function attachEventListeners() {
 async function saveSettings() {
   const settings = {
     anthropicApiKey: document.getElementById('anthropicApiKey').value.trim(),
+    newsApiKey: document.getElementById('newsApiKey').value.trim(),
+    kalshiKeyId: document.getElementById('kalshiKeyId').value.trim(),
+    kalshiPrivateKey: document.getElementById('kalshiPrivateKey').value.trim(),
     bankroll: parseFloat(document.getElementById('bankroll').value) || defaultSettings.bankroll,
     kellyFraction: parseFloat(document.getElementById('kellyFraction').value),
     minEdgeThreshold: parseFloat(document.getElementById('minEdgeThreshold').value),

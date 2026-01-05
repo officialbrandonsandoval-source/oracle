@@ -3,7 +3,15 @@
 
 // Import libraries
 try {
-  importScripts('../lib/oracle_data.js');
+  importScripts(
+    '../lib/oracle_data.js',
+    '../lib/services/polymarketConnector.js',
+    '../lib/services/newsConnector.js',
+    '../lib/services/redditConnector.js',
+    '../lib/services/kalshiConnector.js',
+    '../lib/probabilityAggregator.js',
+    '../lib/calibrationTracker.js'
+  );
 } catch (e) {
   console.error(e);
 }
@@ -84,10 +92,111 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       fetchKalshiMarketData(message.marketId).then(sendResponse);
       return true;
 
+    // --- NEW HANDLERS V2 ---
+    case 'GET_CROSS_REFERENCE':
+      handleCrossReference(message.marketTitle).then(sendResponse);
+      return true;
+
+    case 'GET_NEWS_SENTIMENT':
+      handleNewsSentiment(message.query).then(sendResponse);
+      return true;
+
+    case 'GET_SOCIAL_SENTIMENT':
+      handleSocialSentiment(message.query).then(sendResponse);
+      return true;
+
+    case 'GET_AGGREGATED_ANALYSIS':
+       handleAggregatedAnalysis(message.marketTitle, message.currentPrice, message.options).then(sendResponse);
+       return true;
+
     default:
       sendResponse({ error: 'Unknown message type' });
   }
 });
+
+// --- V2 HANDLERS ---
+
+async function handleCrossReference(marketTitle) {
+  if (typeof PolymarketConnector === 'undefined') return { error: 'Connector not loaded' };
+  const data = await PolymarketConnector.findMatchingMarket(marketTitle);
+  return { success: true, data };
+}
+
+async function handleNewsSentiment(query) {
+  const { settings } = await chrome.storage.local.get('settings');
+  if (!settings?.newsApiKey) return { error: 'No NewsAPI Key' };
+  
+  const data = await NewsConnector.searchNews(query, settings.newsApiKey);
+  return { success: true, data };
+}
+
+async function handleSocialSentiment(query) {
+  const data = await RedditConnector.searchPosts(query);
+  return { success: true, data };
+}
+
+async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
+  // 1. Gather Data in Parallel
+  const { settings } = await chrome.storage.local.get('settings');
+  const newsKey = settings?.newsApiKey;
+  
+  // Clean query for search
+  const cleanQuery = marketTitle.replace(/[^\w\s]/g, '').trim();
+
+  // Parallel Fetch (with extra robustness)
+  // We wrap these in individual try/catches so one failure doesn't kill the whole request
+  const [polyData, newsData, redditData] = await Promise.all([
+     PolymarketConnector.findMatchingMarket(cleanQuery).catch(e => { console.warn('Poly fail', e); return null; }),
+     newsKey ? NewsConnector.searchNews(cleanQuery, newsKey).catch(e => { console.warn('News fail', e); return null; }) : Promise.resolve(null),
+     RedditConnector.searchPosts(cleanQuery).catch(e => { console.warn('Reddit fail', e); return null; })
+  ]);
+
+  // 2. Prepare context for Claude
+  const context = {
+    polymarket: polyData,
+    news: newsData,
+    reddit: redditData,
+    options: options
+  };
+  
+  // NOTE: If ORACLE_DATA is not defined, we need to handle that. 
+  // It should be imported at the top.
+  if (typeof ORACLE_DATA === 'undefined') {
+     console.error('[ORACLE] ORACLE_DATA is undefined');
+     return { success: false, error: 'Internal Error: Oracle Module not loaded' };
+  }
+
+  // 3. Ask Claude for its opinion observing this data
+  let claudeResult;
+  try {
+     claudeResult = await ORACLE_DATA.analyzeMarketV2(marketTitle, currentPrice, options, context);
+  } catch (e) {
+     console.error('[ORACLE] Claude V2 Analysis Failed:', e);
+     // Fallback to basic simulation if Claude fails
+     claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
+     claudeResult.probability = claudeResult.oracleProbability; // Normalize field name
+  }
+
+  // 4. Aggregate Final Probability
+  const sources = {
+    kalshiPrice: currentPrice,
+    polymarketPrice: polyData ? polyData.yesPrice : undefined,
+    claudeProb: claudeResult.oracleProbability || claudeResult.probability, // Handle potential inconsistent naming
+    newsSentiment: newsData ? newsData.sentiment : undefined,
+    socialSentiment: redditData ? redditData.sentiment : undefined
+  };
+  
+  // Ensure ProbabilityAggregator handles cases where sources are missing gracefully
+  const finalAnalysis = ProbabilityAggregator.aggregate(sources);
+  
+  // Merge Claude's text summary with our stats
+  finalAnalysis.summary = claudeResult.summary || "Analysis synthesized from market data.";
+  finalAnalysis.bestOption = claudeResult.bestOption || "N/A";
+  finalAnalysis.sourcesDetails = { polyData, newsData, redditData }; 
+  finalAnalysis.isAiGenerated = claudeResult.isAiGenerated !== false;
+
+  return { success: true, analysis: finalAnalysis };
+}
 
 // Handle adding a new position
 async function handleAddPosition(position) {
@@ -222,7 +331,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 console.log('[ORACLE] Service worker loaded');
 
-// Handle Oracle Analysis request
+// Handle Oracle Analysis request (Legacy or Simple)
 async function handleOracleAnalysis(marketTitle, currentPrice, options) {
   try {
     // Check if ORACLE_DATA is loaded
@@ -231,12 +340,99 @@ async function handleOracleAnalysis(marketTitle, currentPrice, options) {
       return { success: false, error: 'Oracle Data module not loaded' };
     }
     
-    const analysis = await ORACLE_DATA.analyzeMarket(marketTitle, currentPrice, options);
+    // Ensure options is an array
+    const safeOptions = Array.isArray(options) ? options : [];
+
+    const analysis = await ORACLE_DATA.analyzeMarket(marketTitle, currentPrice, safeOptions);
     return { success: true, analysis };
   } catch (error) {
     console.error('Oracle analysis failed:', error);
     return { success: false, error: error.message };
   }
+}
+
+// Handle Aggregated Analysis V2
+async function handleAggregatedAnalysis(marketTitle, currentPrice, options) {
+  if (typeof ORACLE_DATA === 'undefined' || typeof ProbabilityAggregator === 'undefined') {
+     console.error('[ORACLE] Dependencies missing (ORACLE_DATA/ProbAggregator)');
+     // Attempt re-import if missing? No, that's synchronous.
+     return { success: false, error: 'Internal Error: Modules not loaded. Try reloading extension.' };
+  }
+
+  // 1. Gather Data in Parallel
+  const { settings } = await chrome.storage.local.get('settings');
+  const newsKey = settings?.newsApiKey;
+  
+  // Clean query for search
+  const cleanQuery = marketTitle ? marketTitle.replace(/[^\w\s]/g, '').trim() : "market";
+
+  const safeOptions = Array.isArray(options) ? options : [];
+
+  // Parallel Fetch (with extra robustness)
+  const [polyData, newsData, redditData] = await Promise.all([
+     // Polymarket - requires valid query
+     (typeof PolymarketConnector !== 'undefined' && cleanQuery.length > 2) 
+        ? PolymarketConnector.findMatchingMarket(cleanQuery).catch(e => { console.warn('Poly fail', e); return null; })
+        : Promise.resolve(null),
+     
+     // News - requires key
+     (typeof NewsConnector !== 'undefined' && newsKey) 
+        ? NewsConnector.searchNews(cleanQuery, newsKey).catch(e => { console.warn('News fail', e); return null; }) 
+        : Promise.resolve(null),
+     
+     // Reddit
+     (typeof RedditConnector !== 'undefined') 
+        ? RedditConnector.searchPosts(cleanQuery).catch(e => { console.warn('Reddit fail', e); return null; })
+        : Promise.resolve(null)
+  ]);
+
+  // 2. Prepare context for Claude
+  const context = {
+    polymarket: polyData,
+    news: newsData,
+    reddit: redditData,
+    options: safeOptions
+  };
+
+  // 3. Ask Claude for its opinion observing this data
+  let claudeResult;
+  try {
+     // Check if V2 method exists, else fallback to standard
+     if (ORACLE_DATA.analyzeMarketV2) {
+       claudeResult = await ORACLE_DATA.analyzeMarketV2(marketTitle, currentPrice, safeOptions, context);
+     } else {
+       claudeResult = await ORACLE_DATA.analyzeMarket(marketTitle, currentPrice, safeOptions);
+     }
+  } catch (e) {
+     console.error('[ORACLE] Claude V2 Analysis Failed:', e);
+     // Fallback to basic simulation if Claude fails
+     claudeResult = await ORACLE_DATA._analyzeSimulation(marketTitle, currentPrice);
+     claudeResult.probability = claudeResult.oracleProbability; 
+  }
+
+  // 4. Aggregate Final Probability
+  const sources = {
+    kalshiPrice: currentPrice,
+    polymarketPrice: polyData ? polyData.yesPrice : undefined,
+    claudeProb: claudeResult.oracleProbability || claudeResult.probability, 
+    newsSentiment: newsData ? newsData.sentiment : undefined,
+    socialSentiment: redditData ? redditData.sentiment : undefined
+  };
+  
+  const finalAnalysis = ProbabilityAggregator.aggregate(sources);
+  
+  // Merge Claude's text summary with our stats
+  finalAnalysis.summary = claudeResult.summary || "Analysis synthesized from market data.";
+  finalAnalysis.bestOption = claudeResult.bestOption || "N/A";
+  finalAnalysis.sourcesDetails = { polyData, newsData, redditData }; 
+  finalAnalysis.isAiGenerated = claudeResult.isAiGenerated !== false;
+
+  // Track calibration
+  if (typeof CalibrationTracker !== 'undefined') {
+     CalibrationTracker.recordPrediction({ title: marketTitle, yesPrice: currentPrice }, finalAnalysis.probability).catch(e => console.error(e));
+  }
+
+  return { success: true, analysis: finalAnalysis };
 }
 
 // Handle Oracle Chat request
